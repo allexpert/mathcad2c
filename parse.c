@@ -5,7 +5,7 @@
 
 #define PPREFIX	"++"
 
-#define DEBUGLEVEL	0
+#define DEBUGLEVEL	2
 
 #define PARSE_MAX_FUNC_ARGS	128
 
@@ -64,6 +64,34 @@ int get_id2(char *istr, char **first, char **second) {
 #define APPLY_LT      12
 #define APPLY_GT      13
 #define APPLY_EVAL    14
+#define APPLY_TANH    15
+
+char *handle_return(FILE *fi, int level)
+{
+  char *istr, *buffer= malloc(1024);
+  char *stret= NULL;
+  char *idname= NULL;
+
+  dprintf(1, PPREFIX"ml:parens(lev%d):\n", level);
+
+  while (istr= fgets(buffer, 1024, fi)) {
+    dprintf(2, "::%s", istr);
+    if (istr= get1stchar(istr)) {
+      if (!strncmp(istr, "<ml:id", 6)) {
+	dprintf(1, PPREFIX"ml:id(name): %s\n", istr);
+	get_id2(istr + 6, &idname, &idname);
+	if (!stret) {
+	  stret= malloc(2048);
+	  *stret= 0;
+	}
+	sprintf(stret + strlen(stret), "return(%s);\n", idname);
+	break;
+      } 
+    }
+  }
+
+  return(stret);
+}
 
 char *handle_parens(FILE *fi, int level)
 {
@@ -311,6 +339,10 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval)
 	  dprintf(1, PPREFIX"ml:pow: %s\n", istr);
 	  action= APPLY_POW;
 	  break;
+	} else if (!strncmp(istr, "<ml:tanh", 8)) {
+	  dprintf(1, PPREFIX"ml:tanh: %s\n", istr);
+	  action= APPLY_TANH;
+	  break;
 	} else if (!strncmp(istr, "<ml:id", 6)) {
 	  dprintf(1, PPREFIX"ml:id: %s\n", istr);
 	  get_id2(istr + 6, &first, NULL);
@@ -346,7 +378,6 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval)
 	else printf("PARENS ERROR\n");
       } else if (!strncmp(istr, "</ml:pow", 7)) {
 	dprintf(1, PPREFIX"ml:pow close\n");
-	printf(")");
       } else if (!strncmp(istr, "<ml:apply", 9)) {
 	char *stret2= handle_apply(fi, level + 1, 0, ineval);
 	dprintf(1, PPREFIX"ml:apply2(lev%d): ret %s\n", level, stret2);
@@ -418,6 +449,9 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval)
 	  case APPLY_POW: {
 	    sprintf(stret, "pow(%s, %s)", first, second);
 	  } break;
+	  case APPLY_TANH: {
+	    sprintf(stret, "tanh(%s, %s)", first, second);
+	  } break;
 	  case APPLY_INDEXER: {
 	    sprintf(stret, "%s\[%s]", first, second);
 	  } break;
@@ -451,6 +485,10 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval)
   return(NULL);
 }
 
+#define FUNC_NONE   0
+#define FUNC_FUNC   1
+#define FUNC_PROG   2
+
 char *handle_define_eval(FILE *fi, int level, int eval) 
 {
   char *istr, *buffer= malloc(1024);
@@ -460,7 +498,7 @@ char *handle_define_eval(FILE *fi, int level, int eval)
   int   inif= 0;
   int   ifthen= 0;
   int   napply= 0;
-  int   isafunc= 0;
+  int   isafunc= FUNC_NONE;
   char *accum= NULL;
 
   dprintf(1, PPREFIX"ml:define(lev%d):\n", level);
@@ -533,7 +571,10 @@ char *handle_define_eval(FILE *fi, int level, int eval)
 	dprintf(1, PPREFIX"ml:function3(lev%d): ret %s\n", level, stret3);
 	if (!first) first= stret3;
 	else if (!second) second= stret3;
-	isafunc= 1;
+	isafunc= FUNC_FUNC;
+      } else if (!strncmp(istr, "<ml:program", 11)) {
+	dprintf(1, PPREFIX"ml:program(lev%d):\n");
+	isafunc= FUNC_PROG;
       } else if (!strncmp(istr, "<ml:ifThen", 10)) {
 	inif= 1;
 	dprintf(1, PPREFIX"ml:if:\n");
@@ -545,6 +586,21 @@ char *handle_define_eval(FILE *fi, int level, int eval)
 	}
 	strcat(accum, "}\n");
 	inif= 0;
+      } else if (!strncmp(istr, "<ml:return", 9)) {
+	char *stret5= handle_return(fi, level + 1);
+	dprintf(1, PPREFIX"ml:return:\n");
+	if (ifthen) {
+	  if (first && accum) {
+	    second= stret5;
+	    sprintf(accum + strlen(accum), "%s= %s;\n", first, second);
+	  } else {
+	    dprintf(1, PPREFIX"DEFINE FLAW1: accum %x first %s\n", accum, (first) ? first : "NULL");
+	  }
+	} else {
+	  if (!first) first= stret5;
+	  else if (!second) second= stret5;
+	  else printf("RETURN ERROR\n");
+	}
       } else if (!strncmp(istr, "<ml:localDefine", 15)) {
 	char *stret3= handle_define_eval(fi, level + 1, 0);
 	dprintf(1, PPREFIX"ml:localDefine(lev%d): ret %s\n", level, stret3);
@@ -566,15 +622,28 @@ char *handle_define_eval(FILE *fi, int level, int eval)
 	  int locd= (strncmp(istr, "</ml:localDefine", 16)) ? 0 : 1;
 	  if (accum) {
 	    stret= accum;
-	    printf("%s\n", accum);
+	    if (!isafunc)
+	      printf("%s\n", accum);
+	    else {
+	      if (isafunc == FUNC_FUNC)
+		printf("double %s\n\{\nreturn(%s);\n}\n", first, accum);
+	      else {
+		printf("double %s\n\{\n%s\n}\n", first, accum);
+	      }
+	    }
 	  } else {
 	    if (first && second) {
 	      dprintf(1, PPREFIX"/define 1=%s 2=%s\n", first, second);
 	      stret= malloc(strlen(first) + strlen(second) + 32);
 	      if (!isafunc)
 		sprintf(stret, "double %s= %s", first, second);
-	      else
-		sprintf(stret, "double %s\n{\nreturn(%s);\n}\n", first, second);
+	      else {
+		if (isafunc == FUNC_FUNC)
+		  sprintf(stret, "double %s\n{\nreturn(%s);\n}\n", first, second);
+		else {
+		  sprintf(stret, "double %s\n{\n%s\n}\n", first, second);
+		}
+	      }
 	      if (locd || level)
 		strcat(stret, "\n");
 	      else

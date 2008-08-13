@@ -65,6 +65,36 @@ int get_id2(char *istr, char **first, char **second) {
 #define APPLY_GT      13
 #define APPLY_EVAL    14
 
+char *handle_parens(FILE *fi, int level)
+{
+  char *istr, *buffer= malloc(1024);
+  char *stret= NULL;
+
+  dprintf(1, PPREFIX"ml:parens(lev%d):\n", level);
+
+  while (istr= fgets(buffer, 1024, fi)) {
+    dprintf(2, "::%s", istr);
+    if (istr= get1stchar(istr)) {
+      if (!strncmp(istr, "<ml:apply", 9)) {
+	char *stret2= handle_apply(fi, level + 1, 0, 0);
+	dprintf(1, PPREFIX"ml:apply-f(lev%d): ret %s\n", level, stret2);
+	if (!stret) {
+	  stret= malloc(2048);
+	  *stret= 0;
+	}
+	sprintf(stret + strlen(stret), "(");
+	strcat(stret, stret2);
+      } else if (!strncmp(istr, "</ml:parens", 11)) {
+	dprintf(1, PPREFIX"ml:parens close\n");
+	strcat(stret, ")");
+	break;
+      }
+    }
+  }
+
+  return(stret);
+}
+
 char *handle_function(FILE *fi, int level) 
 {
   char *istr, *buffer= malloc(1024);
@@ -106,13 +136,13 @@ char *handle_function(FILE *fi, int level)
 	dprintf(1, PPREFIX"ml:apply-f(lev%d): ret %s\n", level, stret2);
 	if (bvars) {
 	  fargs[nargs++]= stret2;
-	} else printf("NESTED F-APPLY FLOW\n");
+	} else printf("NESTED F-APPLY ERROR\n");
       } else if (!strncmp(istr, "<ml:function", 12)) {
 	char *stret2= handle_function(fi, level + 1);
 	dprintf(1, PPREFIX"ml:function-f(lev%d): ret %s\n", level, stret2);
 	if (bvars) {
 	  fargs[nargs++]= stret2;
-	} else printf("NESTED F-FUNCTION FLOW\n");
+	} else printf("NESTED F-FUNCTION ERROR\n");
       } else if (!strncmp(istr, "<ml:boundVars", 13)) {
 	dprintf(1, PPREFIX"ml:bVars:\n");
 	bvars= 1;
@@ -308,11 +338,12 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval)
 	dprintf(1, PPREFIX"ml:real: %s\n", istr);
 	get_id2(istr + 8, &first, &second);
       } else if (!strncmp(istr, "<ml:parens", 10)) {
+	char *stret4;
 	dprintf(1, PPREFIX"ml:parens open\n");
-	printf("(");
-      } else if (!strncmp(istr, "</ml:parens", 11)) {
-	dprintf(1, PPREFIX"ml:parens close\n");
-	printf(")");
+	stret4= handle_parens(fi, level + 1);
+	if (!first) first= stret4;
+	else if (!second) second= stret4;
+	else printf("PARENS ERROR\n");
       } else if (!strncmp(istr, "</ml:pow", 7)) {
 	dprintf(1, PPREFIX"ml:pow close\n");
 	printf(")");
@@ -321,7 +352,7 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval)
 	dprintf(1, PPREFIX"ml:apply2(lev%d): ret %s\n", level, stret2);
 	if (!first) first= stret2;
 	else if (!second) second= stret2;
-	else printf("NESTED APPLY FLOW\n");
+	else printf("NESTED APPLY ERROR\n");
       } else if (!strncmp(istr, "<ml:sequence", 12)) {
 	char *stret2= handle_sequence(fi, level + 1, 0, ineval);
 	dprintf(1, PPREFIX"ml:sequence(lev%d): ret %s\n", level, stret2);
@@ -330,14 +361,14 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval)
 	  first= strdup("UNKNOWN_ID");
 	}
 	if (!second) second= stret2;
-	else printf("NESTED APPLY FLOW\n");
+	else printf("NESTED APPLY ERROR\n");
 	sequence= 1;
       } else if (!strncmp(istr, "<ml:function", 12)) {
 	char *stret2= handle_function(fi, level + 1);
 	dprintf(1, PPREFIX"ml:function2(lev%d): ret %s\n", level, stret2);
 	if (!first) first= stret2;
 	else if (!second) second= stret2;
-	else printf("NESTED FUNCTION FLOW\n");
+	else printf("NESTED FUNCTION ERROR\n");
       } else if (!strncmp(istr, "</ml:apply>", 11)) {
 	if (first && (second || action == APPLY_NEG)) {
 	  if (second) {
@@ -429,6 +460,7 @@ char *handle_define_eval(FILE *fi, int level, int eval)
   int   inif= 0;
   int   ifthen= 0;
   int   napply= 0;
+  int   isafunc= 0;
   char *accum= NULL;
 
   dprintf(1, PPREFIX"ml:define(lev%d):\n", level);
@@ -474,18 +506,15 @@ char *handle_define_eval(FILE *fi, int level, int eval)
 	  stret3= handle_apply(fi, level + 1, 0, eval);
 
 	if (inif) {
-	  char *newstr;
 	  if (!napply) {
-	    if (accum) {
-	      newstr= accum;
-	    } else {
-	      newstr= malloc(2048);
+	    if (!accum) {
+	      accum= malloc(2048);
+	      *accum= 0;
 	    }
-	    strcat(newstr, "if (");
-	    strcat(newstr, stret3);
-	    strcpy(newstr + strlen(newstr), ") {\n");
+	    strcat(accum, "if (");
+	    strcat(accum, stret3);
+	    strcpy(accum + strlen(accum), ") {\n");
 	    ifthen= 1;
-	    accum= newstr;
 	  } else {
 	    if (accum) {
 	      second= stret3;
@@ -504,6 +533,7 @@ char *handle_define_eval(FILE *fi, int level, int eval)
 	dprintf(1, PPREFIX"ml:function3(lev%d): ret %s\n", level, stret3);
 	if (!first) first= stret3;
 	else if (!second) second= stret3;
+	isafunc= 1;
       } else if (!strncmp(istr, "<ml:ifThen", 10)) {
 	inif= 1;
 	dprintf(1, PPREFIX"ml:if:\n");
@@ -541,7 +571,10 @@ char *handle_define_eval(FILE *fi, int level, int eval)
 	    if (first && second) {
 	      dprintf(1, PPREFIX"/define 1=%s 2=%s\n", first, second);
 	      stret= malloc(strlen(first) + strlen(second) + 32);
-	      sprintf(stret, "double %s= %s", first, second);
+	      if (!isafunc)
+		sprintf(stret, "double %s= %s", first, second);
+	      else
+		sprintf(stret, "double %s\n{\nreturn(%s);\n}\n", first, second);
 	      if (locd || level)
 		strcat(stret, "\n");
 	      else

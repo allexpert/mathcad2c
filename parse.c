@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-//#include <dmalloc.h>
+#include <dmalloc.h>
 
 #define PPREFIX	"++"
 
-#define DEBUGLEVEL	2
+#define DEBUGLEVEL	0
 
 #define PARSE_MAX_FUNC_ARGS	128
 
@@ -29,19 +29,42 @@ int get_id2(char *istr, char **first, char **second) {
   int len= strlen(istr);
   int soffset= strcspn(istr, ">") + 1;
   int eoffset;
+  char *subscript= NULL;
+  char *buffer= NULL;
 
   if (soffset >= len) return(-1);
+
+  buffer= calloc(1024, sizeof(char));
+
+  if (!buffer) return(-1);
+
+  if (!strncmp(istr+1, "subscript=\"", 11)) {
+    int broffset= strcspn(istr + 12, "\"");
+    if (broffset < soffset - 1) {
+      istr[12 + broffset]= 0;
+      subscript= strdup(istr + 12);
+      istr[12 + broffset]= '\"';
+    }
+  }
+
   eoffset= strcspn(istr + soffset, "<");
   if (eoffset + soffset < len) {
     *(istr + eoffset + soffset)= 0;
   }
 
+  if (!subscript) {
+    strcpy(buffer, istr + soffset);
+  } else {
+    sprintf(buffer, "%s_%s", istr + soffset, subscript);
+    free(subscript);
+  }
+
   if (!*first) {
-    *first= strdup(istr + soffset);
+    *first= buffer;
     dprintf(1, PPREFIX"first: %s\n", *first);
     return(0);
   } else {
-    *second= strdup(istr + soffset);
+    *second= buffer;
     dprintf(1, PPREFIX"second: %s\n", *second);
     return(1);
   }
@@ -464,8 +487,8 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval)
 	    else
 	      sprintf(stret, "%s(%s)", first, second);
 	  } break;
-	  default:
-	    sprintf(stret, "%s(?%d)%s", first, action, second);	    
+	  default: /* this must be a function */
+	    sprintf(stret, "%s(%s)", first, second);	    
 	  }
 	  if (!level) printf("%s\n", stret);
 	} else {

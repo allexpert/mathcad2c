@@ -250,6 +250,11 @@ char *handle_sequence(FILE *fi, int level, int inif, int ineval)
 	if (get_id2(istr + 6, &sarray[nargs], NULL) == 0) nargs++;
 	else 
 	  dprintf(1, PPREFIX"FAULTY boundVar!\n");
+      } else if (!strncmp(istr, "<ml:real", 8) && nargs < PARSE_MAX_FUNC_ARGS) {
+	dprintf(1, PPREFIX"ml:real: %s\n", istr);
+	if (get_id2(istr + 6, &sarray[nargs], NULL) == 0) nargs++;
+	else 
+	  dprintf(1, PPREFIX"FAULTY seq!\n");
       } else if (!strncmp(istr, "<ml:apply", 9)) {
 	char *stret2= handle_apply(fi, level + 1, inif, ineval);
 	dprintf(1, PPREFIX"ml:apply-f(lev%d): ret %s\n", level, stret2);

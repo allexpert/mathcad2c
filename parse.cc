@@ -88,11 +88,11 @@ int get_mdim(char *istr, int *rows, int *cols) {
 
   tch= *rend;
   *rend= 0;
-  *rows= (int) strtoul(roffset, (char **) NULL, 0);
+  *rows= (int) strtoul(roffset + 6, (char **) NULL, 0);
   *rend= tch;
   tch= *cend;
   *cend= 0;
-  *cols= (int) strtoul(coffset, (char **) NULL, 0);
+  *cols= (int) strtoul(coffset + 6, (char **) NULL, 0);
   *cend= tch;
 
   return(0);
@@ -128,9 +128,11 @@ char *handle_matrix(FILE *fi, char *sdim, int level)
   char *istr, *buffer= (char *) malloc(1024);
   char *stret= NULL;
   char *idname= NULL;
+  int i= 0, j= 0;
+
+  dprintf(1, PPREFIX"ml:matrix(lev%d): %d %d %d\n", level, iret, rows, cols);
 
   if (!iret && rows && cols) {
-    int i= 0, j= 0;
 
     while (istr= fgets(buffer, 1024, fi)) {
       dprintf(2, "::%s", istr);
@@ -140,37 +142,44 @@ char *handle_matrix(FILE *fi, char *sdim, int level)
 	  get_id2(istr + 6, &idname, &idname);
 	  mtype= MATRIX_TYPE_VAR;
 	  if (!stret) {
-	    stret= (char*) malloc(2048);
+	    stret= (char*) malloc(10240);
 	    *stret= 0;
 	  }
 	  sprintf(stret + strlen(stret), "%s, \n", idname);
-	  break;
 	} else if (!strncmp(istr, "<ml:apply", 9)) {
-	  dprintf(1, PPREFIX"ml:apply(matrix): %s\n", istr);
-	  get_id2(istr + 9, &idname, &idname);
+	  char *stret4= handle_apply(fi, level + 1, 0, 0);
+	  dprintf(1, PPREFIX"ml:apply(matrix): %s\n", stret4);
 	  mtype= MATRIX_TYPE_FUNC;
 	  if (!stret) {
-	    stret= (char *) malloc(2048);
+	    stret= (char *) malloc(10240);
 	    *stret= 0;
 	  }
-	  sprintf(stret + strlen(stret), "%s, ", idname);
-	  break;
+	  sprintf(stret + strlen(stret), "%s, ", stret4);
 	} else if (!strncmp(istr, "<ml:real", 7)) {
 	  dprintf(1, PPREFIX"ml:real(matrix): %s\n", istr);
 	  get_id2(istr + 7, &idname, &idname);
 	  mtype= MATRIX_TYPE_SCALAR;
 	  if (!stret) {
-	    stret= (char *) malloc(2048);
+	    stret= (char *) malloc(10240);
 	    *stret= 0;
 	  }
 	  sprintf(stret + strlen(stret), "%s, \n", idname);
+	} else if (!strncmp(istr, "</ml:matrix", 11)) {
+	  //	  dprintf(1, PPREFIX"i=%d j=%d\n", i, j);
 	  break;
-	} 
+	}
+	if (j < rows) j++;
+	if (j == rows) {
+	  j= 0;
+	  i++;
+	}
       }
     }
   }
 
-  dprintf(1, PPREFIX"MATRIX ERROR(%d): empty matrix\n", level);
+  if (i == cols) return(stret);
+
+  printf(PPREFIX"MATRIX ERROR(%d): empty matrix\n", level);
   return(NULL);
 }
 
@@ -189,7 +198,7 @@ char *handle_return(FILE *fi, int level, int infunc)
 	dprintf(1, PPREFIX"ml:id(name): %s\n", istr);
 	get_id2(istr + 6, &idname, &idname);
 	if (!stret) {
-	  stret= (char *) malloc(2048);
+	  stret= (char *) malloc(1024);
 	  *stret= 0;
 	}
 	if (infunc)
@@ -218,7 +227,7 @@ char *handle_parens(FILE *fi, int level)
 	char *stret2= handle_apply(fi, level + 1, 0, 0);
 	dprintf(1, PPREFIX"ml:apply-f(lev%d): ret %s\n", level, stret2);
 	if (!stret) {
-	  stret= (char *) malloc(2048);
+	  stret= (char *) malloc(1024);
 	  *stret= 0;
 	}
 	sprintf(stret + strlen(stret), "(");
@@ -662,7 +671,7 @@ char *handle_define_eval(FILE *fi, int level, int eval)
 	if (!first) first= smatr;
 	else if (!second) second= smatr;
 	else 
-	  dprintf(1, PPREFIX"DEFINE ERROR(%d): matrix\n", level);
+	  dprintf(1, PPREFIX"DEFINE ERROR(%d): matrix 1=\"%s\" 2=\"%s\" 3=\"%s\"\n", level, first, second, smatr);
       } else if (!strncmp(istr, "<ml:apply", 9)) {
 	char *stret3;
 
@@ -676,7 +685,7 @@ char *handle_define_eval(FILE *fi, int level, int eval)
 	if (inif) {
 	  if (!nIf[proglevel]) {
 	    if (!accum) {
-	      accum= (char *) malloc(2048);
+	      accum= (char *) malloc(1024);
 	      *accum= 0;
 	    }
 	    strcat(accum, "if (");
@@ -741,7 +750,7 @@ char *handle_define_eval(FILE *fi, int level, int eval)
       } else if (!strncmp(istr, "</ml:ifThen", 11)) {
 	dprintf(1, PPREFIX"ml:if/:\n");
 	if (!accum) {
-	  accum= (char *) malloc(2048);
+	  accum= (char *) malloc(1024);
 	  *accum= 0;
 	}
 	strcat(accum, "}\n");

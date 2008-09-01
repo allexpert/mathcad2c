@@ -11,7 +11,7 @@
 
 #define dprintf(lev, fmt, args...)   if(lev <= DEBUGLEVEL) printf(fmt, ## args)
 
-char *handle_apply(FILE *fi, int level, int inif, int ineval);
+char *handle_apply(FILE *fi, int level, int inif, int ineval, int *indexer);
 
 char *get1stchar(char *istr) 
 {
@@ -129,6 +129,7 @@ char *handle_matrix(FILE *fi, char *sdim, int level)
   char *stret= NULL;
   char *idname= NULL;
   int i= 0, j= 0;
+  int indexer= 0;
 
   dprintf(1, PPREFIX"ml:matrix(lev%d): %d %d %d\n", level, iret, rows, cols);
 
@@ -147,7 +148,7 @@ char *handle_matrix(FILE *fi, char *sdim, int level)
 	  }
 	  sprintf(stret + strlen(stret), "%s, \n", idname);
 	} else if (!strncmp(istr, "<ml:apply", 9)) {
-	  char *stret4= handle_apply(fi, level + 1, 0, 0);
+	  char *stret4= handle_apply(fi, level + 1, 0, 0, &indexer);
 	  dprintf(1, PPREFIX"ml:apply(matrix): %s\n", stret4);
 	  mtype= MATRIX_TYPE_FUNC;
 	  if (!stret) {
@@ -217,6 +218,7 @@ char *handle_parens(FILE *fi, int level)
 {
   char *istr, *buffer= (char *) malloc(1024);
   char *stret= NULL;
+  int  indexer= 0;
 
   dprintf(1, PPREFIX"ml:parens(lev%d):\n", level);
 
@@ -224,7 +226,7 @@ char *handle_parens(FILE *fi, int level)
     dprintf(2, "::%s", istr);
     if (istr= get1stchar(istr)) {
       if (!strncmp(istr, "<ml:apply", 9)) {
-	char *stret2= handle_apply(fi, level + 1, 0, 0);
+	char *stret2= handle_apply(fi, level + 1, 0, 0, &indexer);
 	dprintf(1, PPREFIX"ml:apply-f(lev%d): ret %s\n", level, stret2);
 	if (!stret) {
 	  stret= (char *) malloc(1024);
@@ -250,6 +252,7 @@ char *handle_function(FILE *fi, int level)
   char **fargs= (char **) calloc(PARSE_MAX_FUNC_ARGS, sizeof(char*));
   char *stret= NULL;
   int   bvars= 0, nargs= 0, i;
+  int   indexer= 0;
 
   dprintf(1, PPREFIX"ml:function(lev%d):\n", level);
 
@@ -280,7 +283,7 @@ char *handle_function(FILE *fi, int level)
 	    dprintf(1, PPREFIX"FAULTY boundVar!\n");
 	} else get_id2(istr + 6, &fname, NULL);
       } else if (!strncmp(istr, "<ml:apply", 9)) {
-	char *stret2= handle_apply(fi, level + 1, 0, 0);
+	char *stret2= handle_apply(fi, level + 1, 0, 0, &indexer);
 	dprintf(1, PPREFIX"ml:apply-f(lev%d): ret %s\n", level, stret2);
 	if (bvars) {
 	  fargs[nargs++]= stret2;
@@ -336,6 +339,7 @@ char *handle_sequence(FILE *fi, int level, int inif, int ineval)
   char **sarray= (char **) calloc(PARSE_MAX_FUNC_ARGS, sizeof(char*));
   char *stret= NULL;
   int   nargs= 0, i;
+  int   indexer= 0;
 
   dprintf(1, PPREFIX"handle_sequence(lev%d):\n", level);
 
@@ -353,7 +357,7 @@ char *handle_sequence(FILE *fi, int level, int inif, int ineval)
 	else 
 	  dprintf(1, PPREFIX"FAULTY seq!\n");
       } else if (!strncmp(istr, "<ml:apply", 9)) {
-	char *stret2= handle_apply(fi, level + 1, inif, ineval);
+	char *stret2= handle_apply(fi, level + 1, inif, ineval, &indexer);
 	dprintf(1, PPREFIX"ml:apply-f(lev%d): ret %s\n", level, stret2);
 	sarray[nargs++]= stret2;
       } else if (!strncmp(istr, "<ml:function", 12)) {
@@ -393,7 +397,7 @@ char *handle_sequence(FILE *fi, int level, int inif, int ineval)
 }
 
 
-char *handle_apply(FILE *fi, int level, int inif, int ineval) 
+char *handle_apply(FILE *fi, int level, int inif, int ineval, int *indexer) 
 {
   char *istr, *buffer;
   char *first= NULL;
@@ -414,6 +418,7 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval)
 	if (!strncmp(istr, "<ml:indexer", 11)) {
 	  dprintf(1, PPREFIX"ml:indexer: %s\n", istr);
 	  action= APPLY_INDEXER;
+	  *indexer= 1;
 	  break;
 	} else if (!strncmp(istr, "<ml:greaterOrEqual", 19)) {
 	  dprintf(1, PPREFIX"ml:greaterOrequal: %s\n", istr);
@@ -507,7 +512,8 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval)
       } else if (!strncmp(istr, "</ml:pow", 7)) {
 	dprintf(1, PPREFIX"ml:pow close\n");
       } else if (!strncmp(istr, "<ml:apply", 9)) {
-	char *stret2= handle_apply(fi, level + 1, 0, ineval);
+	int lindexer= 0;
+	char *stret2= handle_apply(fi, level + 1, 0, ineval, &lindexer);
 	dprintf(1, PPREFIX"ml:apply2(lev%d): ret %s\n", level, stret2);
 	if (!first) first= stret2;
 	else if (!second) second= stret2;
@@ -593,7 +599,7 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval)
 	      sprintf(stret, "%s(%s)", first, second);
 	  } break;
 	  default: /* this must be a function */
-	    sprintf(stret, "%s(%s)", first, second);	    
+	    sprintf(stret, "%s(double %s)", first, second);	    
 	  }
 	  if (!level) printf("%s\n", stret);
 	} else {
@@ -630,6 +636,7 @@ char *handle_define_eval(FILE *fi, int level, int eval)
   char *accum= NULL;
   int   nIf[128];
   int   proglevel= 0;
+  int   indexer= 0;
 
   nIf[0]= 0;
 
@@ -676,9 +683,9 @@ char *handle_define_eval(FILE *fi, int level, int eval)
 	char *stret3;
 
 	if (!napply)
-	  stret3= handle_apply(fi, level + 1, inif, eval);
+	  stret3= handle_apply(fi, level + 1, inif, eval, &indexer);
 	else
-	  stret3= handle_apply(fi, level + 1, 0, eval);
+	  stret3= handle_apply(fi, level + 1, 0, eval, &indexer);
 
 	dprintf(1, PPREFIX"ml:apply3(lev%d): ret %s inif %d nif %d progl %d napply %d\n", level, stret3, inif, nIf[proglevel], proglevel, napply);
 
@@ -813,7 +820,7 @@ char *handle_define_eval(FILE *fi, int level, int eval)
 	      dprintf(1, PPREFIX"/define 1=%s 2=%s\n", first, second);
 	      stret= (char *) malloc(strlen(first) + strlen(second) + 32);
 	      if (!isafunc) {
-		if (!locd)
+		if (!locd && !indexer)
 		  sprintf(stret, "double %s= %s", first, second);
 		else
 		  sprintf(stret, "%s= %s", first, second);
@@ -866,6 +873,7 @@ int main(int argc, char **argv)
   FILE *fo;
   char *buffer= (char *) malloc(1024);
   char *istr;
+  int   indexer= 0;
 
   if (argc < 3) return(-1);
 
@@ -893,7 +901,7 @@ int main(int argc, char **argv)
 	  printf("%s;\n", stret0);
       } else if (!strncmp(istr, "<ml:apply", 9)) {
 	char *stret0;
-	stret0= handle_apply(fi, 0, 0, 0);
+	stret0= handle_apply(fi, 0, 0, 0, &indexer);
 	if (stret0)
 	  printf("%s;\n", stret0);
       } else if (!strncmp(istr, "<ml:function", 12)) {

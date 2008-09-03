@@ -5,7 +5,7 @@
 
 #define PPREFIX	"++"
 
-#define DEBUGLEVEL	2
+#define DEBUGLEVEL	0
 
 #define PARSE_MAX_FUNC_ARGS	128
 
@@ -117,6 +117,7 @@ int get_mdim(char *istr, int *rows, int *cols) {
 #define APPLY_GT      13
 #define APPLY_EVAL    14
 #define APPLY_TANH    15
+#define APPLY_NOTEQ   16
 
 #define MATRIX_TYPE_UNKNW	0
 #define MATRIX_TYPE_SCALAR	1
@@ -454,6 +455,10 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval, int *indexer, int 
 	  dprintf(1, PPREFIX"ml:equal: %s\n", istr);
 	  action= APPLY_EQUAL;
 	  break;
+	} else if (!strncmp(istr, "<ml:notEqual", 12)) {
+	  dprintf(1, PPREFIX"ml:notEqual: %s\n", istr);
+	  action= APPLY_NOTEQ;
+	  break;
 	} else if (!strncmp(istr, "<ml:plus", 8)) {
 	  dprintf(1, PPREFIX"ml:plus: %s\n", istr);
 	  action= APPLY_PLUS;
@@ -573,6 +578,9 @@ char *handle_apply(FILE *fi, int level, int inif, int ineval, int *indexer, int 
 		sprintf(stret, "%s(%s)", first, second);
 	    } else
 	      sprintf(stret, "%s == %s", first, second);
+	  } break;
+	  case APPLY_NOTEQ: {
+	    sprintf(stret, "%s != %s", first, second);
 	  } break;
 	  case APPLY_GEQ: {
 	    sprintf(stret, "%s >= %s", first, second);
@@ -715,7 +723,6 @@ char *handle_define_eval(FILE *fi, int level, int eval, int *isafunc)
 
 	if (inif) {
 	  if (!nIf[proglevel]) {
-	    printf("+++2");
 	    if (!accum) {
 	      accum= (char *) malloc(1024);
 	      *accum= 0;
@@ -899,7 +906,6 @@ char *handle_define_eval(FILE *fi, int level, int eval, int *isafunc)
 	free(buffer);
 	free(first);
 	free(second);
-	printf("++++++3: %s\n", stret);
 	return(stret);
       }
     }    
@@ -932,6 +938,7 @@ int main(int argc, char **argv)
   if (!buffer) return(-4);
 
   printf("int main(int argc, char **argv) {\n");
+  printf("#define e	2.718281828459045\n\n");
 
   while (istr= fgets(buffer, 1024, fi)) {
     dprintf(2, "::%s", istr);

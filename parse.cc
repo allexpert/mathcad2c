@@ -918,9 +918,9 @@ int main(int argc, char **argv)
   fi= fopen(argv[1], "r");
   if (!fi) return(-1);
   fohead= fopen(argv[2], "w");
-  if (!fo) return(-2);
+  if (!fohead) return(-2);
   fofunc= fopen(argv[3], "w");
-  if (!fo) return(-3);
+  if (!fofunc) return(-3);
 
   if (!buffer) return(-3);
 
